@@ -2,12 +2,12 @@ name: 每日收盘后自动推送
 
 # 触发条件: 定时任务 + 手动触发
 on:
+  # 每天北京时间16:30 (UTC 08:30) 执行
+  # 注意: GitHub Actions使用UTC时间,需要时差转换
   schedule:
-    # 每天北京时间16:30 (UTC 08:30) 执行
-    # 注意: GitHub Actions使用UTC时间,需要时差转换
     - cron: '30 8 * * 1-5'  # 周一到周五,UTC 8:30 = 北京 16:30
 
-  # 也支持手动触发
+  # 手动触发
   workflow_dispatch:
 
 jobs:
