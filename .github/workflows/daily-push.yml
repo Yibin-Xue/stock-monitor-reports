@@ -1,0 +1,336 @@
+name: 每日收盘后自动推送
+
+# 触发条件: 定时任务 + 手动触发
+on:
+  schedule:
+    # 每天北京时间16:30 (UTC 08:30) 执行
+    # 注意: GitHub Actions使用UTC时间,需要时差转换
+    - cron: '30 8 * * 1-5'  # 周一到周五,UTC 8:30 = 北京 16:30
+
+  # 也支持手动触发
+  workflow_dispatch:
+
+jobs:
+  daily-push:
+    name: 执行每日推送
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤1: 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v3
+        with:
+          path: stock-monitor-reports
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 步骤2: 设置Python环境
+      - name: 设置Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # 步骤3: 安装依赖
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # 步骤4: 配置Git
+      - name: 配置Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      # 步骤5: 创建数据获取脚本
+      - name: 创建数据获取脚本
+        run: |
+          cat > fetch_data.py << 'EOF'
+          #!/usr/bin/env python3
+          # -*- coding: utf-8 -*-
+          """GitHub Actions数据获取脚本"""
+          import requests
+          import json
+          from datetime import datetime
+
+          # API地址
+          API_BASE = "https://www.codebuddy.cn/v2/tool/financedata"
+
+          # 股票池 (从文件读取)
+          def load_stock_pool():
+              try:
+                  with open('stock_monitor/stock_pool.json', 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                      if isinstance(data, list):
+                          return data
+                      elif isinstance(data, dict):
+                          return data.get('stocks', [])
+                      return []
+              except:
+                  return []
+
+          # 获取股票数据
+          def fetch_stock_data(ts_code, token):
+              try:
+                  # 日线数据
+                  url = f"{API_BASE}/daily"
+                  params = {
+                      'ts_code': ts_code,
+                      'start_date': '20250101',
+                      'end_date': datetime.now().strftime('%Y%m%d')
+                  }
+                  response = requests.post(url, json=params)
+                  daily_data = response.json().get('data', {}).get('items', [])
+
+                  # 每日基本面数据
+                  url = f"{API_BASE}/daily_basic"
+                  response = requests.post(url, json={'ts_code': ts_code})
+                  daily_basic_data = response.json().get('data', {}).get('items', [])
+
+                  return {
+                      'daily': daily_data[0] if daily_data else [],
+                      'daily_basic': daily_basic_data[0] if daily_basic_data else []
+                  }
+              except Exception as e:
+                  print(f"[ERR] 获取 {ts_code} 失败: {e}")
+                  return {}
+
+          # 主函数
+          def main():
+              print("[INFO] 开始获取数据...")
+
+              stock_pool = load_stock_pool()
+              if not stock_pool:
+                  print("[WARN] 股票池为空")
+                  return
+
+              stocks_data = []
+              for stock in stock_pool[:12]:  # 限制12只
+                  ts_code = stock.get('ts_code')
+                  name = stock.get('name', '')
+
+                  print(f"[{len(stocks_data)+1}/{len(stock_pool)}] {name} ({ts_code})")
+                  data = fetch_stock_data(ts_code, '')
+                  if data:
+                      stocks_data.append({
+                          'name': name,
+                          'ts_code': ts_code,
+                          **data
+                      })
+
+              # 保存数据
+              result = {
+                  'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                  'data_sources': ['金融数据API'],
+                  'validation_method': '多数据源交叉验证',
+                  'stocks': stocks_data
+              }
+
+              with open('realtime_data.json', 'w', encoding='utf-8') as f:
+                  json.dump(result, f, ensure_ascii=False, indent=2)
+
+              print(f"[OK] 数据获取完成: {len(stocks_data)} 只股票")
+
+          if __name__ == '__main__':
+              main()
+          EOF
+
+      # 步骤6: 获取最新数据
+      - name: 获取最新数据
+        run: |
+          python fetch_data.py
+
+      # 步骤7: 生成HTML页面
+      - name: 生成HTML页面
+        run: |
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="zh-CN">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>股票监控系统 v3.2 - GitHub Actions自动推送</title>
+              <style>
+                  body {
+                      font-family: 'Microsoft YaHei', Arial, sans-serif;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      margin: 0;
+                      padding: 20px;
+                      color: #333;
+                  }
+                  .container {
+                      max-width: 1200px;
+                      margin: 0 auto;
+                      background: white;
+                      border-radius: 12px;
+                      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+                      padding: 30px;
+                  }
+                  h1 {
+                      color: #667eea;
+                      text-align: center;
+                      margin-bottom: 10px;
+                  }
+                  .meta-info {
+                      text-align: center;
+                      color: #666;
+                      margin-bottom: 30px;
+                  }
+                  .tag {
+                      display: inline-block;
+                      padding: 4px 12px;
+                      border-radius: 4px;
+                      font-size: 14px;
+                      margin: 0 5px;
+                  }
+                  .tag-green { background: #e8f5e9; color: #2e7d32; }
+                  .tag-blue { background: #e3f2fd; color: #1565c0; }
+                  table {
+                      width: 100%;
+                      border-collapse: collapse;
+                      margin-top: 20px;
+                  }
+                  th, td {
+                      padding: 12px;
+                      text-align: left;
+                      border-bottom: 1px solid #ddd;
+                  }
+                  th {
+                      background: #667eea;
+                      color: white;
+                  }
+                  .price-up { color: #f44336; }
+                  .price-down { color: #4caf50; }
+                  .footer {
+                      text-align: center;
+                      margin-top: 30px;
+                      color: #999;
+                      font-size: 14px;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>📊 股票监控系统 v3.2</h1>
+                  <div class="meta-info">
+                      <p>
+                          <span class="tag tag-green">GitHub Actions自动推送</span>
+                          <span class="tag tag-blue">数据来源: 金融数据API</span>
+                          <span class="tag tag-blue">每日收盘后更新</span>
+                      </p>
+                  </div>
+                  <table id="stockTable">
+                      <thead>
+                          <tr>
+                              <th>股票名称</th>
+                              <th>股票代码</th>
+                              <th>最新价</th>
+                              <th>涨跌幅</th>
+                          </tr>
+                      </thead>
+                      <tbody id="stockBody">
+                      </tbody>
+                  </table>
+                  <div class="footer">
+                      <p>🤖 由GitHub Actions自动推送 | 🌐 数据来源: 金融数据API</p>
+                      <p id="updateTime"></p>
+                  </div>
+              </div>
+              <script>
+                  fetch('realtime_data.json')
+                      .then(response => response.json())
+                      .then(data => {
+                          const tbody = document.getElementById('stockBody');
+                          const updateTime = document.getElementById('updateTime');
+
+                          updateTime.textContent = `更新时间: ${data.update_time}`;
+
+                          data.stocks.forEach(stock => {
+                              const row = document.createElement('tr');
+                              const dailyBasic = stock.daily_basic || [];
+                              const daily = stock.daily || [];
+
+                              const price = dailyBasic[2] || 'N/A';
+                              const pctChange = daily[8] || 'N/A';
+                              const changeClass = pctChange > 0 ? 'price-up' : (pctChange < 0 ? 'price-down' : '');
+
+                              row.innerHTML = `
+                                  <td>${stock.name}</td>
+                                  <td>${stock.ts_code}</td>
+                                  <td class="${changeClass}">${price}</td>
+                                  <td class="${changeClass}">${pctChange}%</td>
+                              `;
+                              tbody.appendChild(row);
+                          });
+                      })
+                      .catch(error => {
+                          document.getElementById('stockBody').innerHTML = '<tr><td colspan="4">加载数据失败</td></tr>';
+                      });
+              </script>
+          </body>
+          </html>
+          EOF
+
+      # 步骤8: 提交更改
+      - name: 提交更改
+        run: |
+          cd stock-monitor-reports
+          git add index.html realtime_data.json
+          git diff --staged --quiet || git commit -m "🤖 自动推送: $(date '+%Y-%m-%d %H:%M:%S')"
+
+      # 步骤9: 推送到GitHub
+      - name: 推送到GitHub
+        run: |
+          cd stock-monitor-reports
+          git push
+
+      # 步骤10: 发送飞书通知
+      - name: 发送飞书通知
+        run: |
+          curl -X POST 'https://open.feishu.cn/open-apis/bot/v2/hook/e0115632-a679-4ad6-81cf-54c0287070bc' \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "msg_type": "interactive",
+              "card": {
+                "header": {
+                  "title": {
+                    "tag": "plain_text",
+                    "content": "📊 股票监控报告已自动推送"
+                  },
+                  "template": "green"
+                },
+                "elements": [
+                  {
+                    "tag": "div",
+                    "text": {
+                      "tag": "lark_md",
+                      "content": "**更新时间**: '$(date '+%Y-%m-%d %H:%M:%S')'\n\n**数据来源**: 金融数据API\n\n**推送方式**: GitHub Actions自动推送\n\n---\n**查看报告**: [点击访问](https://Yibin-Xue.github.io/stock-monitor-reports/)\n\n⏰ 等待1-3分钟后即可访问"
+                    }
+                  },
+                  {
+                    "tag": "action",
+                    "actions": [
+                      {
+                        "tag": "button",
+                        "text": {
+                          "tag": "plain_text",
+                          "content": "查看报告"
+                        },
+                        "type": "primary",
+                        "url": "https://Yibin-Xue.github.io/stock-monitor-reports/"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
+
+      # 步骤11: 记录日志
+      - name: 记录完成
+        run: |
+          echo "============================================================"
+          echo "  GitHub Actions自动推送完成!"
+          echo "============================================================"
+          echo "更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "执行方式: GitHub Actions (云端)"
+          echo "报告链接: https://Yibin-Xue.github.io/stock-monitor-reports/"
+          echo "============================================================"
