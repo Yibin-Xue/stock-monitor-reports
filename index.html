@@ -12,6 +12,42 @@
             padding: 20px;
             min-height: 100vh;
         }
+        /* 固定导航栏样式 */
+        .nav-bar {
+            position: sticky;
+            top: 0;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            padding: 15px 40px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .nav-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+        }
+        .nav-btn.active {
+            background: #764ba2;
+            box-shadow: 0 4px 12px rgba(118,75,162,0.4);
+        }
+        /* 平滑滚动 */
+        html {
+            scroll-behavior: smooth;
+        }
         .container {
             max-width: 1400px;
             margin: 0 auto;
@@ -204,12 +240,19 @@
         <header>
             <h1>📊 股票池深度分析报告 v2.0</h1>
             <div class="meta">
-                生成时间: 2026-03-18 20:33:24 | 股票数量: 12 只 | 板块数量: 12 个
+                生成时间: 2026-03-18 20:36:45 | 股票数量: 12 只 | 板块数量: 12 个
             </div>
         </header>
 
+        <!-- 导航栏 -->
+        <div class="nav-bar">
+            <button class="nav-btn" onclick="scrollToSection('summary')">📊 报告摘要</button>
+            <button class="nav-btn" onclick="scrollToSection('industry')">🏢 申万行业分析</button>
+            <button class="nav-btn" onclick="scrollToSection('stocks')">📈 股票深度分析</button>
+        </div>
+
         <div class="content">
-            <div class="section">
+            <div class="section" id="summary">
                 <h2 class="section-title">📈 报告摘要</h2>
                 <div class="summary-grid">
                     <div class="summary-card">
@@ -231,7 +274,7 @@
                 </div>
             </div>
 
-            <div class="section">
+            <div class="section" id="industry">
                 <h2 class="section-title">🏢 申万行业分析</h2>
 
                 <div class="industry-card">
@@ -344,9 +387,9 @@
 
             </div>
 
-            <div class="section">
+            <div class="section" id="stocks">
                 <h2 class="section-title">📊 股票深度分析</h2>
-
+        
                 <div class="stock-card">
                     <div class="stock-header">
                         <h2>海光信息 (688041.SH)</h2>
@@ -1778,10 +1821,49 @@
             </div>
 
             <div class="data-source">
-                数据来源: 金融数据API (Tushare) | 报告生成时间: 2026-03-18 20:33:24<br>
+                数据来源: 金融数据API (Tushare) | 报告生成时间: 2026-03-18 20:36:45<br>
                 本报告仅供参考,不构成投资建议。投资有风险,入市需谨慎。
             </div>
         </div>
     </div>
+
+    <script>
+        function scrollToSection(sectionId) {
+            const element = document.getElementById(sectionId);
+            if (element) {
+                const navHeight = document.querySelector('.nav-bar').offsetHeight;
+                const elementPosition = element.getBoundingClientRect().top;
+                const offsetPosition = elementPosition + window.pageYOffset - navHeight - 20;
+
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: "smooth"
+                });
+            }
+
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        window.addEventListener('scroll', function() {
+            const sections = ['summary', 'industry', 'stocks'];
+            const navHeight = document.querySelector('.nav-bar').offsetHeight;
+
+            sections.forEach(sectionId => {
+                const section = document.getElementById(sectionId);
+                if (section) {
+                    const sectionTop = section.offsetTop - navHeight - 100;
+                    const sectionBottom = sectionTop + section.offsetHeight;
+
+                    if (window.pageYOffset >= sectionTop && window.pageYOffset < sectionBottom) {
+                        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+                        const btn = document.querySelector(`.nav-btn[onclick*="${sectionId}"]`);
+                        if (btn) btn.classList.add('active');
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>
+    
